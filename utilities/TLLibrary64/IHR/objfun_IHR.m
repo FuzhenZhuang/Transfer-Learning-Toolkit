@@ -1,0 +1,37 @@
+function f = objfun(beta)
+%%%%%
+global TrainSetX;
+global TrainSetY;
+global TrainXY;
+global TestSetX;
+global TestSetY;
+
+global afa;
+global gama;
+global eta;
+global npos;
+global s11;
+global w1;
+global W0;
+global kneighbor_testp;
+global kneighbor_mix;
+%%%%%
+DataX = [TrainSetX TestSetX];
+tempw1 = w1 + beta*s11;
+tempsum1 = 0;
+for i=1:size(TestSetX,2)
+    tempKN = kneighbor_testp(i,:);
+    tempTuples = TestSetX(:,tempKN);
+    s1 = tempw1'*tempTuples;
+    p1 = 1./(1 + exp(-s1));
+    tempsum1 = tempsum1 + (sum(p1)/size(kneighbor_testp,2)-1/(1+exp(-tempw1'*TestSetX(:,i))))^2;
+end
+
+tempsum2 = 0;
+for i=1:size(TestSetX,2)
+    tempsum2 = tempsum2 + (1/(1+exp(-tempw1'*TestSetX(:,i))) - 0.5)^2;
+end
+
+s1 = tempw1'*TestSetX;
+p1 = 1./(1 + exp(-s1));
+f = afa*tempsum1/size(TestSetX,2)+((tempw1)'*(tempw1))-gama*tempsum2/size(TestSetX,2)+eta*(sum(p1)-npos)^2/size(TestSetX,2); %07-12-31

@@ -1,0 +1,9 @@
+
+%** MAMUDA algorithm, according to Jin et al.' paper: "Multi-task Multi-view Learning for Heterogeneous Tasks" in CIKM 2014;
+leaves.mat contains the data of Leaves problem use in the original paper.
+Explanation of the code can be found in the source code file;
+
+run example:
+
+load('d:\leaves.mat'); 
+[result,F1,meanF1,R,Rt,Q]=MAMUDA(testfea,testlabel,trainFea,trainLabel,unlabelFea,unlabelLabel,4,4,0.0,50,50,50,2);

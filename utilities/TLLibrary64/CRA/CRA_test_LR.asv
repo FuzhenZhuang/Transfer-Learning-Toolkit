@@ -1,0 +1,46 @@
+function result = CRA_test_LR(traindata, testdata, trainlabel, testlabel, numX, numS)
+    %% use the model test the target domain data
+
+    % test the train data
+    C = zeros(numS+1, size(traindata,1));
+    tempTrainXY = scale_cols(traindata, trainlabel);
+    
+    % train the classifier, each source with a classifier
+    for i = 1 : numS
+        c00 = zeros(size(tempTrainXY,1),1);
+        lambda = exp(linspace(-0.5,6,20));
+        wbest=[];
+        f1max = -inf;
+        for j = 1 : length(lambda)
+            c_0 = train_cg(tempTrainXY(:,numX(1,i)+1 : 1 : numX(1,i+1)),c00,lambda(j));
+            f1 = logProb(tempTrainXY(:,numX(1,i)+1 : 1 : numX(1,i+1)),c_0);
+            if f1 > f1max
+                f1max = f1;
+                wbest = c_0;
+            end
+        end
+        C(i,:) = wbest;
+    end
+    
+    % test the train data
+    result = zeros(1,6);
+    iCnt = 1;
+    for i = 1 : numS
+        temp_hiddeninputs = traindata(:,numX(1,i)+1 : 1 : numX(1,i+1));
+        probability = 1./(1+1./(exp(C(i,:)*temp_hiddeninputs)));
+        probability(probability >= 0.5) = 1;
+        probability(probability < 0.5) = -1;
+        templabel = trainlabel(:,numX(1,i)+1 : 1 : numX(1,i+1));
+        result(1,iCnt) = mean(probability(:) == templabel(:));
+        iCnt = iCnt+1;
+    end
+    
+    % test the test data
+    for i = 1 : numS
+        probability = 1./(1+1./(exp(C(i,:)*testdata)));
+        probability(probability >= 0.5) = 1;
+        probability(probability < 0.5) = -1;
+        result(1,iCnt) = mean(probability(:) == testlabel(:));
+        iCnt = iCnt+1;
+    end
+    

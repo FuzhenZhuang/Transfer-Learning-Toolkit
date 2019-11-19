@@ -1,0 +1,400 @@
+function [result,F1,meanF1,R,Rt,Q,S]=MAMUDA(fea,label,trainFea,trainLabel,unlabelFea,unlabelLabel,ite1,ite2,alpha,itermediateD,reducedD,sharedD,neighborNum)
+%% --
+%** MAMUDA algorithm, according to Jin et al.' paper: "Multi-task Multi-view Learning for Heterogeneous Tasks" in CIKM 2014  
+% written by Xin Jin - 2014
+% jinx@ics.ict.ac.cn; sdjinxin@gmail.com 
+%
+
+%%  
+% --fea:    a taskNum*viewNum cell array of matrices, each matirx 
+%           represents the feature matrix for a view for a task. If a
+%           view does not exist for a task, then it is an empty matrix. Each row in a matrix represents a sample. It
+%           contains the testing fea.
+% --label:  a taskNum dimension cell array of matrices, each matrix 
+%           contains labels for a task,it is a column vector (n*1
+%           matrix),labels are -1 or 1, in accordance with othe MTMV programs; Fro multi-class problems, the new label should be 1,2,...,C. It contains testing label.
+%--ite1: the maximum iteration number. There are two layer loop, ite1 is
+%        the number of the outer loop.
+%--ite2: the maximum iteration number. There are two layer loop, ite2 is
+%        the number of the inner loop, for the trace ratio algorithm.
+%--alpha: parameters used in Eq.(4) in the paper, controls the manifold
+%         regularization -- not used in supervised version of the code
+%--itermediateD: bar d in Eq.(6), represents the dimension of the
+%                intermediate feature space
+%--reducedD:  d in Eq.(6), represents the dimension of the
+%                final reduced feature space
+%--sharedD: d' in Eq.(6), represents the shared dimension of multiple tasks in the
+%                final reduced feature space
+%--neighborNum: the number of nearest neighbors to construct the similarity
+%               graph for manifold regualarization-- not used in supervised
+%               version
+
+%--result:a taskNum dimension cell array of matrices, each  matrix contains
+%         the predicted class label for the task
+%--F1: for 2-class problem, using F1 measure, for multi-class problem, using accuracy measure
+%--meanF1: mean F1 for all the tasks, i.e.,meanF1=mean(F1);
+%--R: is a matrix,the common transformation matrix shared by multiple tasks, defined in Eq.(6)
+%--Rt: a taskNum cell array of matrices, each matrix is a task-specific
+%      transformation matrix, difined in Eq.(6)
+%--Q: a taskNum * viewNum cell array of matrices, each matrix is the
+%     transformation matrix, defined in Eq.(6)
+
+
+%%
+tmp=size(fea);
+taskNum=tmp(1);% --taskNum: number of tasks for the problem
+% --viewNum: number of all the views in the problem
+viewNum=tmp(2);
+
+
+
+
+featureNum=zeros(1,viewNum);
+viewLabel=zeros(taskNum,viewNum);%
+sampleNum=zeros(1,taskNum);%
+trainNum=zeros(1,taskNum);
+unlabelNum=zeros(1,taskNum);
+classNum=zeros(1,taskNum);%
+for i=1:taskNum
+    for j=1:viewNum
+        tmp=cell2mat(fea(i,j));
+        tmpsize=size(tmp);
+        if tmpsize(1)>0
+            viewLabel(i,j)=1;
+            featureNum(j)=tmpsize(2);
+            sampleNum(i)=tmpsize(1);
+            %fea(i,j)=mat2cell(sparse(tmp),tmpsize(1),tmpsize(2)); %transform to the sparse matrix
+        end
+    end
+    tmp=cell2mat(label(i));
+    if min(tmp)==-1
+        classNum(i)=2;
+    else
+        classNum(i)=max(tmp);
+    end
+    tmp=cell2mat(trainLabel(i));
+    tmp=size(tmp);
+    trainNum(i)=max(tmp);
+    tmp=cell2mat(unlabelLabel(i));
+    tmp=size(tmp);
+    unlabelNum(i)=max(tmp);
+end
+
+
+
+%-------将原来二类问题的类别标签-1和1改为1和2， 即将-1改为2
+for i=1:taskNum
+    tmplabel=cell2mat(label(i));
+    if min(tmplabel)==1
+       break; 
+    end
+    tmp2=tmplabel==-1;
+    tmp2=tmp2*3;
+    tmplabel=tmplabel+tmp2;
+    label(i)=num2cell(tmplabel,[1,2]);
+    
+    tmplabel=cell2mat(trainLabel(i));
+    tmp2=tmplabel==-1;
+    tmp2=tmp2*3;
+    tmplabel=tmplabel+tmp2;
+    trainLabel(i)=num2cell(tmplabel,[1,2]);
+    
+    tmplabel=cell2mat(unlabelLabel(i));
+    tmp2=tmplabel==-1;
+    tmp2=tmp2*3;
+    tmplabel=tmplabel+tmp2;
+    unlabelLabel(i)=num2cell(tmplabel,[1,2]);
+end
+
+% ----------------------------------------------------
+Sb=cell(taskNum,viewNum); %
+Sh=cell(taskNum,viewNum); %
+for i=1:taskNum
+    for j=1:viewNum
+        if viewLabel(i,j)
+            % compute S_{t,h}^v
+            tmpfea=cell2mat(trainFea(i,j));
+            meanfea=mean(tmpfea);
+            tmptmp=repmat(meanfea,trainNum(i),1);
+            tmpSubMean=tmpfea-tmptmp;
+            tmpsh=tmpSubMean'*tmpSubMean;
+            tmpsh=tmpsh./trainNum(i);
+            Sh(i,j)=mat2cell(tmpsh,featureNum(j),featureNum(j));
+            
+            % compute S_{t,b}^v
+            tmpsb=zeros(featureNum(j));
+            for c=1:classNum(i)
+                tmplabel=cell2mat(trainLabel(i));
+                [tmpi,tmpj]=find(tmplabel==c);
+                tmpfeac=tmpfea(tmpi,:);
+                tmpnc=size(tmpfeac,1);
+                tmpmeanfeac=mean(tmpfeac);
+                tmpSubMeanC=tmpmeanfeac-meanfea;
+                tmpsb=tmpsb+tmpSubMeanC'*tmpSubMeanC.*tmpnc;
+            end
+            tmpsb= tmpsb./trainNum(i);
+            Sb(i,j)=mat2cell(tmpsb,featureNum(j),featureNum(j));
+            
+        end %  if viewLabel(i,j)
+    end % for i=1:taskNum
+end %j=1:viewNum
+
+
+
+%-----
+if abs(alpha)>1e-11
+    S=cell(taskNum,viewNum);
+    for i=1:taskNum
+        for j=1:viewNum
+            if viewLabel(i,j)
+                tmps=zeros(unlabelNum(i)+sampleNum(i));
+                tmpfea=[cell2mat(unlabelFea(i,j));cell2mat(fea(i,j))];
+                tmpfea=tmpfea';
+                for k=1:unlabelNum(i)+sampleNum(i)
+                    tmpfea2=tmpfea;
+                    tmpsample=tmpfea2(:,k);
+                    tmpsample=repmat(tmpsample,1,unlabelNum(i)+sampleNum(i));
+                    tmpfea2=tmpfea2-tmpsample;
+                    tmpdistance=sum(tmpfea2.^2);
+                   
+                    [~,tmpi]=sort(tmpdistance,'ascend');
+                    k2=tmpi(1:neighborNum+1);
+                    
+                    tmps(k,k2)=ones(1,neighborNum+1);
+                    tmps(k2,k)=ones(neighborNum+1,1);
+                    
+                    
+                end % for k=1:trainNum+unlabelNum
+                
+                S(i,j)=mat2cell(tmps,unlabelNum(i)+sampleNum(i),unlabelNum(i)+sampleNum(i));
+            end %  if viewLabel(i,j)
+        end % for i=1:taskNum
+    end %j=1:viewNum
+
+
+  
+    for i=1:taskNum
+      
+      
+        for j=1:viewNum
+            if viewLabel(i,j)
+               
+                tmpfea=[cell2mat(unlabelFea(i,j));cell2mat(fea(i,j))];
+                
+                tmps=cell2mat(S(i,j));
+              
+                tmps=diag(sum(tmps))-tmps; 
+                tmpz=tmpfea'*tmps*tmpfea;
+                tmpz=(tmpz+tmpz')./2;
+                
+                tmpsh=cell2mat(Sh(i,j));
+                tmpsh=tmpsh+alpha.*tmpz;
+                Sh(i,j)=mat2cell(tmpsh,featureNum(j),featureNum(j));
+            end
+        end
+        
+    end  %for i=1:taskNum
+    
+    
+end
+
+%初始化Q_t^v, R_t and R
+R=eye(itermediateD);
+R=R(:,1:sharedD);
+Rt=cell(taskNum,1);
+tmpr=eye(itermediateD);
+tmpr=tmpr(:,1:reducedD-sharedD);
+for i=1:taskNum
+   Rt(i)=mat2cell(tmpr,itermediateD,reducedD-sharedD);
+end
+
+Q=cell(taskNum,viewNum);
+for j=1:viewNum
+    tmp=eye(featureNum(j));
+    for i=1:taskNum
+        if viewLabel(i,j)
+                tmp=tmp(:,1:itermediateD);
+            Q(i,j)=mat2cell(tmp,featureNum(j),itermediateD);
+        end
+    end
+end
+
+% ----------------------------------------------------
+% optimize Q_t^v, R_t and R
+for iteNum=1:ite1
+    iteNum
+    % optimize R
+
+    
+   
+    % optimize R
+    sumViewQSbQ=cell(taskNum,1);
+    sumViewQShQ=cell(taskNum,1);
+    traceSumViewRQSbQR=zeros(taskNum,1);
+    traceSumViewRQShQR=zeros(taskNum,1);
+    for i=1:taskNum
+        tmpSumSb=zeros(itermediateD);
+        tmpSumSh=zeros(itermediateD);
+        for j=1:viewNum
+            if viewLabel(i,j)
+                tmpsb=cell2mat(Sb(i,j));
+                tmpsh=cell2mat(Sh(i,j));
+                tmpq=cell2mat(Q(i,j));
+                tmpSumSb=tmpSumSb+(tmpq'*tmpsb)*tmpq;
+                tmpSumSh=tmpSumSh+(tmpq'*tmpsh)*tmpq;
+                
+
+            end
+        end
+        
+
+        
+        sumViewQSbQ(i)=mat2cell(tmpSumSb,itermediateD,itermediateD);
+        sumViewQShQ(i)=mat2cell(tmpSumSh,itermediateD,itermediateD);
+        tmpr=cell2mat(Rt(i));
+        traceSumViewRQSbQR(i)=trace(tmpr'*tmpSumSb*tmpr);
+        traceSumViewRQShQR(i)=trace(tmpr'*tmpSumSh*tmpr);
+    end
+    if sharedD>0
+        barSb=sum(traceSumViewRQSbQR)/sharedD.*eye(itermediateD); % Eq.(16)
+        for i=1:taskNum
+            barSb=barSb+cell2mat(sumViewQSbQ(i));
+        end
+        barSh=sum(traceSumViewRQShQR)/sharedD.*eye(itermediateD); % Eq.(16)
+        for i=1:taskNum
+            barSh=barSh+cell2mat(sumViewQShQ(i));
+        end
+        R= traceRatio1(barSb,barSh,sharedD,ite2);
+    end
+    
+  
+    % optimize R_t
+    if reducedD-sharedD>0
+        tmpb=zeros(itermediateD);
+        tmph=zeros(itermediateD);
+        for i=1:taskNum
+            tmpb=tmpb+cell2mat(sumViewQSbQ(i));
+            tmph=tmph+cell2mat(sumViewQShQ(i));
+        end
+        traceSumTaskSumViewb=trace(R'*tmpb*R); % need to be used taskNum times
+        traceSumTaskSumViewh=trace(R'*tmph*R);
+        
+        for i=1:taskNum
+            tmp=sum(traceSumViewRQSbQR)-traceSumViewRQSbQR(i);
+            barSb=(tmp+traceSumTaskSumViewb)/(reducedD-sharedD).*eye(itermediateD);
+            barSb=barSb+cell2mat(sumViewQSbQ(i));
+            tmp=sum(traceSumViewRQShQR)-traceSumViewRQShQR(i);
+            barSh=(tmp+traceSumTaskSumViewh)/(reducedD-sharedD).*eye(itermediateD);
+            barSh=barSh+cell2mat(sumViewQShQ(i));
+            tmp= traceRatio1(barSb,barSh,reducedD-sharedD,ite2);
+            Rt(i)=mat2cell(tmp,itermediateD,reducedD-sharedD);
+            
+            traceSumViewRQSbQR(i)=trace(tmp'*cell2mat(sumViewQSbQ(i))*tmp); %update the traceSum value after Rt(i) are updated
+            traceSumViewRQShQR(i)=trace(tmp'*cell2mat(sumViewQShQ(i))*tmp);
+        end
+    end
+    clear sumViewQSbQ;
+    clear sumViewQShQ;
+    
+     % optimize Q_t^v
+     traceRQSbQR=zeros(taskNum,viewNum);
+     traceRQShQR=zeros(taskNum,viewNum);
+     for i=1:taskNum
+         tmp=cell2mat(Rt(i));
+         tmpr=[R tmp];
+         for j=1:viewNum
+             if viewLabel(i,j)
+                 tmpq=cell2mat(Q(i,j));
+                 tmpsb=cell2mat(Sb(i,j));
+                 tmpsh=cell2mat(Sh(i,j));
+                 traceRQSbQR(i,j)=trace(tmpr'*tmpq'*tmpsb*tmpq*tmpr);
+                 traceRQShQR(i,j)=trace(tmpr'*tmpq'*tmpsh*tmpq*tmpr);
+             end
+         end
+     end
+     
+     for i=1:taskNum
+         for j=1:viewNum
+             if viewLabel(i,j)
+                 tmpsb=cell2mat(Sb(i,j));
+                 tmpsh=cell2mat(Sh(i,j));
+                 barSb=tmpsb+(sum(sum(traceRQSbQR))-traceRQSbQR(i,j))/reducedD.*eye(featureNum(j));
+                 barSh=tmpsh+(sum(sum(traceRQShQR))-traceRQShQR(i,j))/reducedD.*eye(featureNum(j));
+                 tmp=cell2mat(Rt(i));
+                 tmpr=[R tmp];
+                 tmpa=tmpr*tmpr';
+                 tmp= traceRatio2(barSb,barSh,tmpa,ite2);
+                 Q(i,j)=mat2cell(tmp,featureNum(j),itermediateD);
+                 
+                 %update trace value
+                 traceRQSbQR(i,j)=trace(tmpr'*tmp'*tmpsb*tmp*tmpr);
+                 traceRQShQR(i,j)=trace(tmpr'*tmp'*tmpsh*tmp*tmpr);                 
+             end
+         end
+     end 
+     
+     myobject=sum(sum(traceRQSbQR))/sum(sum(traceRQShQR));
+
+end %for iteNum=1:ite1
+
+% ---------------------------------------------------------------------
+% predict the class label for the test samples
+result=cell(taskNum,1);
+
+for i=1:taskNum
+    tmp=cell2mat(Rt(i));
+    tmpr=[R,tmp];
+    tmpFea=zeros(sampleNum(i),reducedD);
+    tmpLabel=zeros(sampleNum(i),1);
+    tmpTrainFea=zeros(trainNum(i),reducedD);
+    tmpTrainLabel=cell2mat(trainLabel(i));
+    for j=1:viewNum
+        if viewLabel(i,j)
+            tmpq=cell2mat(Q(i,j));
+            tmpqr=tmpq*tmpr;
+            tmptrain=cell2mat(trainFea(i,j));
+            tmpTrainFea=tmpTrainFea+tmptrain*tmpqr;
+            
+            tmptest=cell2mat(fea(i,j));
+            tmpFea=tmpFea+tmptest*tmpqr;
+        end
+    end % for j=1:viewNum
+    
+    tmpFea=tmpFea'; % after transpose, each column represents a sample
+    tmpTrainFea=tmpTrainFea';
+    for kk=1:sampleNum(i)
+        tmp=tmpFea(:,kk);
+        tmp=repmat(tmp,1,trainNum(i));
+        tmp=tmp-tmpTrainFea;
+        tmp=sum(tmp.^2);
+        [~,minindex]=min(tmp);
+        tmpLabel(kk)=tmpTrainLabel(minindex);
+    end
+    result(i)=mat2cell(tmpLabel,sampleNum(i),1);
+end % for i=1:taskNum
+
+% ---------------------------------------------------------------------
+% evaluate the results: for 2-class problem, using F1 measure, for
+% multi-class problem, using accuracy measure
+F1=zeros(taskNum,1);
+
+if max(classNum)==2  % 2-class problem
+   for i=1:taskNum
+       predictLabel=cell2mat(result(i));
+       trueLabel=cell2mat(label(i));
+       tp=sum((predictLabel+trueLabel)==2);
+       precision=tp/(sum(predictLabel==1)+1e-6);
+       recall=tp/(sum(trueLabel==1)+1e-6);
+       F1(i)=(2*precision*recall+1e-6)/(precision+recall+1e-6);
+   end
+   meanF1=mean(F1);    
+else  % multi-class problem
+    for i=1:taskNum
+       predictLabel=cell2mat(result(i));
+       trueLabel=cell2mat(label(i));
+       F1(i)=(sum(predictLabel==trueLabel)+1e-6)/(sampleNum(i)+1e-6);
+    end
+    meanF1=mean(F1);
+end
+
+end

@@ -1,0 +1,10 @@
+function [TrainX, TestX, TrainY, TestY] = TLDA_loadData(TrainXPath,TrainYPath,TestXPath,TestYPath)
+    load(TrainXPath);
+    load(TrainYPath);
+    load(TestXPath);
+    load(TestYPath);
+    TrainX = TrainData;
+    TrainY = TrainLabel;
+    TestX = TestData;
+    TestY = TestLabel;
+end

@@ -1,0 +1,15 @@
+function result = TLDA_test(train_predict, test_predict, trainlabel, testlabel)
+    % test the train data
+    probability = train_predict(1,:)-train_predict(2,:);
+    probability(probability >= 0) = 1;
+    probability(probability < 0.5) = -1;
+    train_predict(train_predict >= 0.5) = 1;
+    train_predict(train_predict < 0.5) = -1;
+    size(train_predict)
+    size(trainlabel)
+    result(1,1) = mean(train_predict(:) == trainlabel(:));
+    
+    % test the test data    
+    test_predict(test_predict >= 0.5) = 1;
+    test_predict(test_predict < 0.5) = -1;
+    result(2,1) = mean(test_predict(:) == testlabel(:));  

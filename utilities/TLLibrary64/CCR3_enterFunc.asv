@@ -1,0 +1,9 @@
+function meanF1 = CCR3_enterFunc(inputPath,ite,h,alpha,beta,gamma)
+     %% ======================================================================
+    %%STEP 1: load the data
+    fprintf('start load the data...\n');
+    [TrainData, TestData, TrainLabel, TestLabel, numX, numS] = CRA_loadData(inputPath);
+    
+    
+    [result,F1,meanF1,U,Z,Theta]=CCR(TrainData, TestData, TrainLabel, TestLabel, numX, numS);
+end
