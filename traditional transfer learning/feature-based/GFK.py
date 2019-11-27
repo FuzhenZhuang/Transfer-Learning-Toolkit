@@ -13,6 +13,7 @@ class GFK:
         '''
         Init func
         :param dim: dimension after GFK
+        The code is modified according to https://github.com/jindongwang/transferlearning/tree/master/code/traditional/GFK
         '''
         self.dim = dim
         self.eps = 1e-20
