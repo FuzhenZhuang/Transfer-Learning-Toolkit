@@ -3,7 +3,9 @@ Transfer Learning Toolkit for Primary Researchers
 
 ## Reference
 
-If you are interested in this toolkit and use it for baselines, please cite the two papers as follows, which are preprinted on <https://arxiv.org/abs/1911.02685> and <https://arxiv.org/abs/1911.08967>, respectively.
+If you are interested in this toolkit and use it for baselines, please cite the two papers, 
+
+[A comprehensive survey on transfer learning](<https://arxiv.org/abs/1911.02685>) and [Transfer Learning Toolkit: Primers and Benchmarks](https://arxiv.org/abs/1911.08967)
 
 ```
 F. Zhuang, Z. Qi, K. Duan, D. Xi, Y. Zhu, H. Zhu, H. Xiong, and Q. He, “A comprehensive survey on transfer learning,” 2019, arXiv:1911.02685v1.
