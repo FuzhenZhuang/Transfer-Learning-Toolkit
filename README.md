@@ -3,7 +3,7 @@ Transfer Learning Toolkit for Primary Researchers
 
 ## Reference
 
-If you are interested in this toolkit and use it for baselines, please cite the two papers, 
+If you are interested in this toolkit and use it for baselines, please cite these two papers, 
 
 [A comprehensive survey on transfer learning](<https://arxiv.org/abs/1911.02685>) and [Transfer Learning Toolkit: Primers and Benchmarks](https://arxiv.org/abs/1911.08967)
 
